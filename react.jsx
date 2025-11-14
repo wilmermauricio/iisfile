@@ -1,79 +1,72 @@
-import React, { useCallback, useState } from 'react';
-import { useDropzone } from 'react-dropzone';
+// Número de pipes que debe tener cada registro
+const PIPES_POR_REGISTRO = 10;
 
-export default function DropzoneTxtParser() {
-  const [records, setRecords] = useState([]);
+/**
+ * Une líneas rotas y devuelve un array con registros completos.
+ * Cada elemento del array es la línea final, lista para split('|').
+ */
+function recomponerLineas(rawText) {
+  const filas = [];
+  let buffer = '';
 
-  const onDrop = useCallback((acceptedFiles) => {
-    const file = acceptedFiles[0];
-    const reader = new FileReader();
+  // Normalizamos saltos de línea y recorremos una a una
+  for (const linea of rawText.replace(/\r/g, '').split('\n')) {
+    if (!linea.trim()) continue;        // ignora líneas en blanco
 
-    reader.onload = (event) => {
-      const text = event.target.result;
-      const cleanRecords = parseRecords(text);
-      setRecords(cleanRecords);
-    };
+    buffer += linea.trim();             // añade la línea al buffer
+    const pipes = (buffer.match(/\|/g) || []).length;
 
-    reader.readAsText(file);
-  }, []);
-
-  const parseRecords = (text) => {
-    const normalizedText = text.replace(/\r/g, '').split('\n').join('');
-    const rawFields = normalizedText.split('|');
-
-    const result = [];
-    for (let i = 0; i < rawFields.length; i += 10) {
-      const slice = rawFields.slice(i, i + 10);
-      if (slice.length === 10) result.push(slice);
+    // ¿Ya hay suficientes pipes?  -> registro completo
+    if (pipes >= PIPES_POR_REGISTRO) {
+      filas.push(buffer);
+      buffer = '';
+    } else {
+      buffer += ' ';                    // espacio opcional para que no se peguen palabras
     }
-    return result;
-  };
+  }
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
+  // Por si el último registro quedó justo al final
+  if (buffer && (buffer.match(/\|/g) || []).length >= PIPES_POR_REGISTRO) {
+    filas.push(buffer);
+  }
 
-  return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <div
-        {...getRootProps()}
-        className={`border-2 border-dashed rounded p-6 text-center cursor-pointer ${
-          isDragActive ? 'bg-blue-100' : 'bg-gray-100'
-        }`}
-      >
-        <input {...getInputProps()} accept=".txt" />
-        {isDragActive ? (
-          <p>Suelta el archivo aquí...</p>
-        ) : (
-          <p>Arrastra un archivo .txt aquí, o haz clic para seleccionar uno</p>
-        )}
-      </div>
-
-      {records.length > 0 && (
-        <table className="table-auto border-collapse border border-gray-400 w-full text-sm mt-6">
-          <thead>
-            <tr>
-              <th className="border px-2 py-1">RNC</th>
-              <th className="border px-2 py-1">Nombre</th>
-              <th className="border px-2 py-1">Comercial</th>
-              <th className="border px-2 py-1">Actividad</th>
-              <th className="border px-2 py-1">Campo 5</th>
-              <th className="border px-2 py-1">Campo 6</th>
-              <th className="border px-2 py-1">Campo 7</th>
-              <th className="border px-2 py-1">Campo 8</th>
-              <th className="border px-2 py-1">Fecha</th>
-              <th className="border px-2 py-1">Estado</th>
-            </tr>
-          </thead>
-          <tbody>
-            {records.map((row, idx) => (
-              <tr key={idx}>
-                {row.map((field, i) => (
-                  <td key={i} className="border px-2 py-1">{field}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
+  return filas;
 }
+
+
+
+const handleUpload = async () => {
+  try {
+    setUploading(true);
+    setMessage('');
+    setDropzoneColor('gray');
+
+    const text = await readFileAsANSI(file);
+
+    // 🔄 NUEVO: repara las líneas antes de procesar
+    const allLines = recomponerLineas(text);
+
+    console.log(allLines);              // ahora cada elemento tiene 10 pipes
+    const linesPerChunk = 10_000;
+
+    // Si tu archivo lleva cabecera, quítala aquí; si no, comenta la siguiente línea
+    // const header = allLines[0];
+    // const dataLines = allLines.slice(1);
+    const dataLines = allLines;         // sin cabecera
+
+    const totalChunks = Math.ceil(dataLines.length / linesPerChunk) || 1;
+
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * linesPerChunk;
+      const end = Math.min(start + linesPerChunk, dataLines.length);
+      const chunkLines = dataLines.slice(start, end);
+
+      // ... tu lógica de envío con TextEncoder o fetch ...
+    }
+  } catch (err) {
+    console.error(err);
+    setMessage('Error subiendo archivo');
+  } finally {
+    setUploading(false);
+  }
+};
