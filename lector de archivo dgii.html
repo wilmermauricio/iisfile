@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Lector de archivos de texto</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 2rem;
+      background: #f9fafb;
+      color: #111;
+    }
+    .card {
+      background: #fff;
+      border-radius: 1rem;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+      padding: 2rem;
+      max-width: 600px;
+      margin: auto;
+    }
+    input[type="file"] {
+      margin-bottom: 1rem;
+    }
+    pre {
+      white-space: pre-wrap;
+      background: #f3f4f6;
+      padding: 1rem;
+      border-radius: 0.5rem;
+      max-height: 400px;
+      overflow: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Lector de archivos de texto</h1>
+
+    <!-- Selector de archivo -->
+    <input id="fileInput" type="file" accept=".txt,text/plain" />
+
+    <!-- Área para mostrar el contenido -->
+    <pre id="output" hidden></pre>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById("fileInput");
+    const output = document.getElementById("output");
+
+    fileInput.addEventListener("change", (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      if (!file.type.startsWith("text/")) {
+        alert("Por favor selecciona un archivo de texto.");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+
+        const text = e.target.result;
+
+        output.textContent =  text;
+
+
+        const allLines = text.split(/\r?\n/);
+const saneLines = sanitizeLines(allLines);
+
+console.log(saneLines);
+
+        output.hidden = false;
+      };
+      reader.onerror = () => {
+        alert("Error al leer el archivo.");
+      };
+
+       reader.readAsText(file, "windows-1252");
+    });
+    const EXPECTED_PIPES = 10;
+
+function sanitizeLines(allLines, expectedPipes = EXPECTED_PIPES) {
+  const saneLines = [];
+
+  let buffer = "";              // Aquí vamos acumulando fragmentos de registro
+  let bufferPipeCount = 0;      // Pipes acumulados en el buffer
+  let startPhysicalLine = 0;    // Número de línea física donde empezó el registro actual
+
+  const countPipes = (s) => (s.match(/\|/g) || []).length;
+
+  for (let i = 0; i < allLines.length; i++) {
+    const line = allLines[i];
+
+    if (buffer === "") {
+      // Empezamos un nuevo registro lógico
+      buffer = line;
+      bufferPipeCount = countPipes(buffer);
+      startPhysicalLine = i + 1; // +1 para que sea 1-based
+    } else {
+      // Seguimos completando el registro lógico anterior
+      // Importante: unimos sin salto de línea, porque el salto es el error que estamos corrigiendo
+      buffer += line;
+      bufferPipeCount = countPipes(buffer);
+    }
+
+    if (bufferPipeCount === expectedPipes) {
+      // Registro completo correcto
+      saneLines.push(buffer);
+      buffer = "";
+      bufferPipeCount = 0;
+    } else if (bufferPipeCount > expectedPipes) {
+      // Más de 11 pipes: inconsistencia
+      throw new Error(
+        `Inconsistencia en el saneamiento: el registro que empieza en la línea física ${startPhysicalLine} ` +
+        `supera el máximo de ${expectedPipes} pipes (tiene ${bufferPipeCount}).`
+      );
+    } else {
+      // Aún no llegamos a expectedPipes, seguimos leyendo líneas y acumulando
+      continue;
+    }
+  }
+
+  // Si terminamos el loop y aún queda algo en buffer, el último registro está incompleto
+  if (buffer !== "") {
+    throw new Error(
+      `Fin de archivo con un registro incompleto que empieza en la línea física ${startPhysicalLine}: ` +
+      `tiene ${bufferPipeCount} pipes, se esperaban ${expectedPipes}.`
+    );
+  }
+
+  return saneLines;
+}
+
+  </script>
+</body>
+</html>
